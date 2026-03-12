@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import math
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -13,9 +14,11 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 import yfinance as yf
 from pypdf import PdfReader
-import altair as alt
+import plotly.graph_objects as go
+import plotly.io as pio
 
 
 MF_API_BASE = "https://api.mfapi.in"
@@ -265,7 +268,35 @@ def inject_app_styles() -> None:
             color: #ffffff;
             box-shadow: 0 8px 18px rgba(17, 24, 39, 0.08);
         }
-        .vega-embed {
+        .stat-chip {
+            border-radius: 14px;
+            padding: 0.85rem 1rem;
+            min-height: 74px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 0.25rem;
+            border: 1px solid #d1d5db;
+        }
+        .stat-chip.dark {
+            background: #111111;
+            color: #ffffff;
+            border-color: #111111;
+        }
+        .stat-chip.light {
+            background: #ffffff;
+            color: #111827;
+        }
+        .stat-chip .label {
+            font-size: 0.82rem;
+            font-weight: 600;
+            opacity: 0.9;
+        }
+        .stat-chip .value {
+            font-size: 1rem;
+            font-weight: 700;
+        }
+        .vega-embed, .js-plotly-plot {
             background: #ffffff;
             border: 1px solid #d1d5db;
             border-radius: 16px;
@@ -373,9 +404,15 @@ def main() -> None:
         with metric_controls[0]:
             tenure_label = st.selectbox("Return / Risk Duration", list(TENURE_OPTIONS.keys()), index=2)
         with metric_controls[1]:
-            st.selectbox("Benchmark Used", [benchmark_label], index=0, disabled=True)
+            st.markdown(
+                f'<div class="stat-chip dark"><div class="label">Benchmark Used</div><div class="value">{benchmark_label}</div></div>',
+                unsafe_allow_html=True,
+            )
         with metric_controls[2]:
-            st.text_input("Risk-Free Rate Applied", f"{risk_free_rate:.1f}%", disabled=True)
+            st.markdown(
+                f'<div class="stat-chip light"><div class="label">Risk-Free Rate Applied</div><div class="value">{risk_free_rate:.1f}%</div></div>',
+                unsafe_allow_html=True,
+            )
 
         benchmark_symbol = BENCHMARK_OPTIONS[benchmark_label]
         analytics = analyze_portfolio(working_holdings, benchmark_symbol, TENURE_OPTIONS[tenure_label], risk_free_rate / 100.0)
@@ -987,41 +1024,150 @@ def metrics_to_frame(metrics: dict) -> pd.DataFrame:
 def render_growth_chart(chart_df: pd.DataFrame) -> None:
     plot_df = chart_df.copy()
     plot_df["date"] = pd.to_datetime(plot_df["date"])
-    melted = plot_df.melt(id_vars="date", var_name="Series", value_name="Value").dropna()
-    if melted.empty:
+    series_columns = [col for col in plot_df.columns if col != "date"]
+    if not series_columns:
+        return
+    color_map = {
+        "Portfolio": "#38bdf8",
+        "Benchmark": "#f59e0b",
+    }
+
+    fig = go.Figure()
+    pulse_traces = []
+    all_values = []
+
+    for idx, series_name in enumerate(series_columns):
+        series = plot_df[["date", series_name]].dropna()
+        if series.empty:
+            continue
+        all_values.extend(series[series_name].tolist())
+        line_color = color_map.get(series_name, "#a3a3a3")
+        fig.add_trace(
+            go.Scatter(
+                x=series["date"],
+                y=series[series_name],
+                mode="lines",
+                name=series_name,
+                line={"color": line_color, "width": 3},
+                hovertemplate="%{x|%b %d, %Y}<br>%{fullData.name}: %{y:,.2f}<extra></extra>",
+            )
+        )
+
+        pulse_series = [
+            {
+                "x": ts.isoformat(),
+                "y": float(val),
+            }
+            for ts, val in zip(series["date"], series[series_name])
+        ]
+        pulse_traces.append(
+            {
+                "series": pulse_series,
+                "glowColor": hex_to_rgba(line_color, 0.22),
+                "solidColor": line_color,
+                "name": f"{series_name} pulse",
+            }
+        )
+        first_point = pulse_series[0]
+        fig.add_trace(
+            go.Scatter(
+                x=[first_point["x"]],
+                y=[first_point["y"]],
+                mode="markers",
+                marker={"size": 24, "color": hex_to_rgba(line_color, 0.22), "line": {"width": 0}},
+                name=f"{series_name} glow",
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=[first_point["x"]],
+                y=[first_point["y"]],
+                mode="markers",
+                marker={"size": 9, "color": line_color, "line": {"width": 0}},
+                name=f"{series_name} pulse core",
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+
+    if not all_values:
         return
 
-    min_date = plot_df["date"].min().to_pydatetime()
-    max_date = plot_df["date"].max().to_pydatetime()
-
-    chart = (
-        alt.Chart(melted)
-        .mark_line(strokeWidth=2.5)
-        .encode(
-            x=alt.X(
-                "date:T",
-                title="Month",
-                axis=alt.Axis(format="%b %Y", labelAngle=0, tickCount=8),
-                scale=alt.Scale(domain=[min_date, max_date], nice=False),
-            ),
-            y=alt.Y("Value:Q", title="Value (INR)"),
-            color=alt.Color(
-                "Series:N",
-                scale=alt.Scale(range=["#2563eb", "#f59e0b"]),
-                legend=alt.Legend(title=None, orient="top"),
-            ),
-            tooltip=[
-                alt.Tooltip("yearmonthdate(date):T", title="Date"),
-                alt.Tooltip("Series:N", title="Series"),
-                alt.Tooltip("Value:Q", title="Value", format=",.2f"),
-            ],
-        )
-        .properties(height=360)
-        .configure_axis(labelColor="#111827", titleColor="#111827", gridColor="#e5e7eb")
-        .configure_view(stroke=None)
+    y_min = min(all_values)
+    y_max = max(all_values)
+    y_padding = max((y_max - y_min) * 0.08, y_max * 0.02 if y_max else 1)
+    fig.update_layout(
+        height=390,
+        paper_bgcolor="#0b0b0c",
+        plot_bgcolor="#0b0b0c",
+        margin=dict(l=20, r=20, t=20, b=20),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(color="#ffffff")),
+        xaxis=dict(
+            title="Month",
+            color="#ffffff",
+            gridcolor="rgba(255,255,255,0.08)",
+            tickformat="%b %Y",
+            tickangle=0,
+            range=[plot_df["date"].min(), plot_df["date"].max()],
+            showline=True,
+            linecolor="#ffffff",
+            zeroline=False,
+        ),
+        yaxis=dict(
+            title="Value (INR)",
+            color="#ffffff",
+            gridcolor="rgba(255,255,255,0.08)",
+            range=[y_min - y_padding, y_max + y_padding],
+            showline=True,
+            linecolor="#ffffff",
+            zeroline=False,
+            tickformat=",",
+        ),
+        hoverlabel=dict(bgcolor="#1f2937", font_color="#ffffff"),
     )
 
-    st.altair_chart(chart, use_container_width=True)
+    html = pio.to_html(fig, include_plotlyjs="cdn", full_html=False, div_id="growth-chart")
+    pulse_json = json.dumps(pulse_traces)
+    html += f"""
+    <script>
+    (function() {{
+      const pulses = {pulse_json};
+      const chart = document.getElementById("growth-chart");
+      if (!chart || !window.Plotly || !pulses.length) return;
+      const duration = 3000;
+      let start = performance.now();
+
+      function pointAt(series, progress) {{
+        const index = Math.min(series.length - 1, Math.floor(progress * (series.length - 1)));
+        return series[index];
+      }}
+
+      function animate(now) {{
+        const progress = ((now - start) % duration) / duration;
+        const update = {{ x: [], y: [] }};
+        pulses.forEach((pulse) => {{
+          const point = pointAt(pulse.series, progress);
+          update.x.push([point.x]);
+          update.y.push([point.y]);
+          update.x.push([point.x]);
+          update.y.push([point.y]);
+        }});
+        const traceIndexes = [];
+        for (let i = 0; i < pulses.length; i++) {{
+          traceIndexes.push(1 + i * 3);
+          traceIndexes.push(2 + i * 3);
+        }}
+        window.Plotly.restyle(chart, update, traceIndexes);
+        requestAnimationFrame(animate);
+      }}
+
+      requestAnimationFrame(animate);
+    }})();
+    </script>
+    """
+    components.html(html, height=430)
 
 
 def to_value_frame(frame: pd.DataFrame) -> pd.DataFrame:
@@ -1163,6 +1309,16 @@ def format_inr(value: float) -> str:
     if pd.isna(value):
         return "-"
     return f"Rs {value:,.2f}"
+
+
+def hex_to_rgba(hex_color: str, alpha: float) -> str:
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) != 6:
+        return f"rgba(255,255,255,{alpha})"
+    red = int(hex_color[0:2], 16)
+    green = int(hex_color[2:4], 16)
+    blue = int(hex_color[4:6], 16)
+    return f"rgba({red},{green},{blue},{alpha})"
 
 
 if __name__ == "__main__":
