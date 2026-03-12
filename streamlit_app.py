@@ -128,7 +128,7 @@ def inject_app_styles() -> None:
         }
         .stButton > button,
         .stDownloadButton > button {
-            background: linear-gradient(135deg, #111111, #444444);
+            background: linear-gradient(135deg, #111111, #2f2f2f);
             color: #ffffff;
             border: none;
             border-radius: 12px;
@@ -254,14 +254,16 @@ def inject_app_styles() -> None:
             color: #111827 !important;
         }
         .workflow-step {
-            background: #ffffff;
-            border: 1px solid #d1d5db;
+            background: linear-gradient(135deg, #5b5b5b, #7a7a7a);
+            border: 1px solid #6b7280;
             border-radius: 14px;
             padding: 0.9rem 1rem;
             font-weight: 600;
             min-height: 64px;
             display: flex;
             align-items: center;
+            color: #ffffff;
+            box-shadow: 0 8px 18px rgba(17, 24, 39, 0.08);
         }
         .vega-embed {
             background: #ffffff;
@@ -1005,7 +1007,7 @@ def render_growth_chart(chart_df: pd.DataFrame) -> None:
             y=alt.Y("Value:Q", title="Value (INR)"),
             color=alt.Color(
                 "Series:N",
-                scale=alt.Scale(range=["#111111", "#6b7280"]),
+                scale=alt.Scale(range=["#2563eb", "#f59e0b"]),
                 legend=alt.Legend(title=None, orient="top"),
             ),
             tooltip=[
