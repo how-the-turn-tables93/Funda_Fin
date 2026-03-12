@@ -15,6 +15,7 @@ import requests
 import streamlit as st
 import yfinance as yf
 from pypdf import PdfReader
+import altair as alt
 
 
 MF_API_BASE = "https://api.mfapi.in"
@@ -71,7 +72,7 @@ def inject_app_styles() -> None:
         """
         <style>
         .stApp {
-            background: linear-gradient(180deg, #eef5ff 0%, #f8fbff 100%);
+            background: linear-gradient(180deg, #f2f2f2 0%, #fafafa 100%);
             color: #111827;
         }
         .main .block-container {
@@ -100,15 +101,15 @@ def inject_app_styles() -> None:
             font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.14em;
-            color: #00baf2;
+            color: #4b5563;
             font-weight: 700;
         }
         .hero-note, .upload-panel {
             background: #ffffff;
-            border: 1px solid #cfe3ff;
+            border: 1px solid #d1d5db;
             border-radius: 18px;
             padding: 1rem 1.1rem;
-            box-shadow: 0 12px 28px rgba(38, 84, 124, 0.08);
+            box-shadow: 0 12px 28px rgba(17, 24, 39, 0.06);
         }
         .hero-note ul {
             margin-bottom: 0;
@@ -116,10 +117,10 @@ def inject_app_styles() -> None:
         }
         [data-testid="stMetric"] {
             background: #ffffff;
-            border: 1px solid #cfe3ff;
+            border: 1px solid #d1d5db;
             border-radius: 16px;
             padding: 0.75rem 1rem;
-            box-shadow: 0 10px 24px rgba(38, 84, 124, 0.06);
+            box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);
         }
         [data-testid="stMetricLabel"] *,
         [data-testid="stMetricValue"] * {
@@ -127,7 +128,7 @@ def inject_app_styles() -> None:
         }
         .stButton > button,
         .stDownloadButton > button {
-            background: linear-gradient(135deg, #00baf2, #0f4cdd);
+            background: linear-gradient(135deg, #111111, #444444);
             color: #ffffff;
             border: none;
             border-radius: 12px;
@@ -135,20 +136,32 @@ def inject_app_styles() -> None:
         }
         .stButton > button:hover,
         .stDownloadButton > button:hover {
-            background: linear-gradient(135deg, #0f4cdd, #00baf2);
+            background: linear-gradient(135deg, #222222, #555555);
             color: #ffffff;
         }
         .stTextInput input,
         .stNumberInput input,
-        .stSelectbox div[data-baseweb="select"],
-        .stMultiSelect div[data-baseweb="select"],
         .stDateInput input,
-        .stFileUploader,
-        .stTextArea textarea {
+        .stTextArea textarea,
+        .stFileUploader section {
             background: #ffffff !important;
             color: #111827 !important;
-            border: 1px solid #b9d5ff !important;
+            border: 1px solid #9ca3af !important;
             border-radius: 12px !important;
+        }
+        .stSelectbox div[data-baseweb="select"] > div,
+        .stMultiSelect div[data-baseweb="select"] > div {
+            background: #ffffff !important;
+            color: #111827 !important;
+            border: 1px solid #9ca3af !important;
+            border-radius: 12px !important;
+        }
+        .stSelectbox div[data-baseweb="select"] input,
+        .stMultiSelect div[data-baseweb="select"] input,
+        .stSelectbox div[data-baseweb="select"] span,
+        .stMultiSelect div[data-baseweb="select"] span {
+            color: #111827 !important;
+            -webkit-text-fill-color: #111827 !important;
         }
         .stTextInput label,
         .stNumberInput label,
@@ -161,34 +174,100 @@ def inject_app_styles() -> None:
             color: #111827 !important;
             font-weight: 600;
         }
+        .stTextInput [disabled],
+        .stNumberInput [disabled],
+        .stSelectbox [aria-disabled="true"],
+        .stTextInput input:disabled,
+        .stNumberInput input:disabled {
+            background: #f3f4f6 !important;
+            color: #111827 !important;
+            -webkit-text-fill-color: #111827 !important;
+            opacity: 1 !important;
+        }
         .stTabs [data-baseweb="tab-list"] {
             gap: 0.5rem;
         }
         .stTabs [data-baseweb="tab"] {
             background: #ffffff;
-            border: 1px solid #cfe3ff;
+            border: 1px solid #d1d5db;
             border-radius: 12px 12px 0 0;
             color: #111827;
         }
         .stTabs [aria-selected="true"] {
-            color: #0f4cdd !important;
-            border-bottom: 2px solid #00baf2 !important;
+            color: #111827 !important;
+            border-bottom: 2px solid #111827 !important;
         }
         [data-testid="stDataFrame"],
         [data-testid="stTable"] {
             background: #ffffff;
-            border: 1px solid #cfe3ff;
+            border: 1px solid #d1d5db;
             border-radius: 16px;
             padding: 0.25rem;
         }
+        [data-testid="stFileUploaderDropzone"] {
+            background: #ffffff !important;
+            border: 1px solid #9ca3af !important;
+            color: #111827 !important;
+        }
+        [data-testid="stFileUploaderDropzone"] * {
+            color: #111827 !important;
+            fill: #111827 !important;
+        }
+        [data-testid="stFileUploaderFile"] {
+            background: #ffffff !important;
+            border: 1px solid #d1d5db !important;
+        }
+        [data-testid="stFileUploaderFile"] * {
+            color: #111827 !important;
+            fill: #111827 !important;
+        }
+        [data-testid="stFileUploaderFileName"] {
+            color: #111827 !important;
+            -webkit-text-fill-color: #111827 !important;
+        }
+        [data-testid="stBaseButton-secondary"] {
+            background: #ffffff !important;
+            color: #111827 !important;
+            border: 1px solid #9ca3af !important;
+        }
+        [data-testid="stBaseButton-secondary"] * {
+            color: #111827 !important;
+            fill: #111827 !important;
+        }
+        .stCheckbox label,
+        .stCheckbox span,
+        .stToggle span {
+            color: #111827 !important;
+        }
+        .st-emotion-cache-16txtl3, .st-emotion-cache-1f3w014 {
+            color: #111827 !important;
+        }
         .stAlert {
             color: #111827;
+            background: #ffffff !important;
+            border: 1px solid #d1d5db !important;
         }
         .stMarkdown, .stCaption {
             color: #111827 !important;
         }
         code, pre {
             color: #111827 !important;
+        }
+        .workflow-step {
+            background: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 14px;
+            padding: 0.9rem 1rem;
+            font-weight: 600;
+            min-height: 64px;
+            display: flex;
+            align-items: center;
+        }
+        .vega-embed {
+            background: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 16px;
+            padding: 0.5rem;
         }
         @media (max-width: 900px) {
             .app-hero {
@@ -255,9 +334,9 @@ def main() -> None:
 
     st.markdown("### Workflow")
     workflow_cols = st.columns(3)
-    workflow_cols[0].info("1. Upload CAS")
-    workflow_cols[1].info("2. Review extracted folios")
-    workflow_cols[2].info("3. Analyze returns and risk ratios")
+    workflow_cols[0].markdown('<div class="workflow-step">1. Upload CAS</div>', unsafe_allow_html=True)
+    workflow_cols[1].markdown('<div class="workflow-step">2. Review extracted folios</div>', unsafe_allow_html=True)
+    workflow_cols[2].markdown('<div class="workflow-step">3. Analyze returns and risk ratios</div>', unsafe_allow_html=True)
 
     parsed = None
     if use_demo:
@@ -312,7 +391,7 @@ def main() -> None:
         chart_df = analytics["growth_chart"].copy()
         if not chart_df.empty:
             st.subheader("Growth of Rs 100,000")
-            st.line_chart(chart_df.set_index("date"), height=360)
+            render_growth_chart(chart_df)
 
         col1, col2 = st.columns([0.9, 1.1], gap="large")
         with col1:
@@ -901,6 +980,46 @@ def metrics_to_frame(metrics: dict) -> pd.DataFrame:
             {"Metric": "Max Drawdown", "Value": format_pct(metrics["max_drawdown"])},
         ]
     )
+
+
+def render_growth_chart(chart_df: pd.DataFrame) -> None:
+    plot_df = chart_df.copy()
+    plot_df["date"] = pd.to_datetime(plot_df["date"])
+    melted = plot_df.melt(id_vars="date", var_name="Series", value_name="Value").dropna()
+    if melted.empty:
+        return
+
+    min_date = plot_df["date"].min().to_pydatetime()
+    max_date = plot_df["date"].max().to_pydatetime()
+
+    chart = (
+        alt.Chart(melted)
+        .mark_line(strokeWidth=2.5)
+        .encode(
+            x=alt.X(
+                "date:T",
+                title="Month",
+                axis=alt.Axis(format="%b %Y", labelAngle=0, tickCount=8),
+                scale=alt.Scale(domain=[min_date, max_date], nice=False),
+            ),
+            y=alt.Y("Value:Q", title="Value (INR)"),
+            color=alt.Color(
+                "Series:N",
+                scale=alt.Scale(range=["#111111", "#6b7280"]),
+                legend=alt.Legend(title=None, orient="top"),
+            ),
+            tooltip=[
+                alt.Tooltip("yearmonthdate(date):T", title="Date"),
+                alt.Tooltip("Series:N", title="Series"),
+                alt.Tooltip("Value:Q", title="Value", format=",.2f"),
+            ],
+        )
+        .properties(height=360)
+        .configure_axis(labelColor="#111827", titleColor="#111827", gridColor="#e5e7eb")
+        .configure_view(stroke=None)
+    )
+
+    st.altair_chart(chart, use_container_width=True)
 
 
 def to_value_frame(frame: pd.DataFrame) -> pd.DataFrame:
