@@ -1,6 +1,7 @@
-pandas
-numpy
-requests
-yfinance
-pypdf
-streamlit
+streamlit==1.55.0
+altair>=5.0,<6.0
+pandas>=2.2,<3.0
+numpy>=2.2,<3.0
+requests>=2.32,<3.0
+yfinance>=0.2.65,<0.3.0
+pypdf>=6.8,<7.0
