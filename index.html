@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mutual Fund CAS Analyzer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Portfolio Intelligence</p>
+        <h1>Upload a consolidated account statement and turn it into a live mutual fund dashboard.</h1>
+        <p class="hero-text">
+          The app extracts holdings from a detailed CAS PDF, enriches them with NAV history, and computes summary returns,
+          drawdowns, Sharpe ratio, Alpha, Beta, Standard Deviation, Treynor's Ratio, and Information Ratio at both scheme and portfolio level.
+        </p>
+      </div>
+      <div class="hero-card">
+        <div class="metric-badge">
+          <span>Benchmarked analytics</span>
+          <strong id="heroSchemeCount">0 schemes loaded</strong>
+        </div>
+        <ul class="hero-points">
+          <li>Client-side PDF extraction with no backend dependency</li>
+          <li>Portfolio-weighted risk and return statistics</li>
+          <li>Adjustable tenure and annual risk-free rate</li>
+        </ul>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel controls-panel">
+        <div class="panel-head">
+          <h2>Import Statement</h2>
+          <p>Upload a detailed CAS PDF and review the extracted folios before analytics are calculated.</p>
+        </div>
+
+        <label class="upload-card" for="casFile">
+          <input id="casFile" type="file" accept="application/pdf" />
+          <span class="upload-title">Choose CAS PDF</span>
+          <span class="upload-subtitle">Supports text-based detailed consolidated account statements.</span>
+        </label>
+
+        <div class="control-grid">
+          <label>
+            <span>Benchmark</span>
+            <select id="benchmarkSelect">
+              <option value="%5ENSEI">Nifty 50</option>
+              <option value="%5EBSESN">Sensex</option>
+              <option value="NIFTYBEES.NS">Nifty BeES ETF</option>
+              <option value="SPY">SPY</option>
+            </select>
+          </label>
+          <label>
+            <span>Tenure</span>
+            <select id="tenureSelect">
+              <option value="1Y">1 Year</option>
+              <option value="3Y">3 Years</option>
+              <option value="5Y" selected>5 Years</option>
+              <option value="MAX">Since Inception / Max</option>
+            </select>
+          </label>
+          <label>
+            <span>Risk-Free Rate (%)</span>
+            <input id="riskFreeRate" type="number" min="0" max="20" step="0.1" value="7.0" />
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="analyzeButton" disabled>Analyze Portfolio</button>
+          <button id="demoButton" class="ghost-button">Load Demo Holdings</button>
+        </div>
+
+        <div id="statusBanner" class="status-banner info">
+          Upload a CAS PDF to begin. If the statement uses a slightly different layout, you can still inspect the extracted holdings table below.
+        </div>
+      </section>
+
+      <section class="panel summary-panel">
+        <div class="panel-head">
+          <h2>Portfolio Snapshot</h2>
+          <p>Live summary built from the current scheme weights inferred from the imported holdings.</p>
+        </div>
+
+        <div class="summary-grid" id="summaryGrid">
+          <article class="summary-card">
+            <span>Total Value</span>
+            <strong id="totalValue">Rs 0</strong>
+          </article>
+          <article class="summary-card">
+            <span>Total Cost</span>
+            <strong id="totalCost">Rs 0</strong>
+          </article>
+          <article class="summary-card">
+            <span>Unrealized Gain</span>
+            <strong id="unrealizedGain">Rs 0</strong>
+          </article>
+          <article class="summary-card">
+            <span>Portfolio CAGR</span>
+            <strong id="portfolioCagr">-</strong>
+          </article>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-head">
+            <h3>Growth of Rs 1,00,000</h3>
+            <p>Portfolio versus selected benchmark for the chosen tenure.</p>
+          </div>
+          <canvas id="growthChart"></canvas>
+        </div>
+      </section>
+    </main>
+
+    <section class="panel holdings-panel">
+      <div class="panel-head">
+        <h2>Extracted Holdings</h2>
+        <p>Parsed from the uploaded statement and matched to NAV history where possible.</p>
+      </div>
+      <div class="table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>AMC / Fund House</th>
+              <th>Scheme</th>
+              <th>Folio</th>
+              <th>Units</th>
+              <th>Avg Cost / Unit</th>
+              <th>Current NAV</th>
+              <th>Current Value</th>
+              <th>Weight</th>
+              <th>Scheme Code Match</th>
+            </tr>
+          </thead>
+          <tbody id="holdingsTableBody">
+            <tr>
+              <td colspan="9" class="empty-state">No holdings extracted yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="analytics-grid">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Portfolio Risk Ratios</h2>
+          <p>Calculated from daily return series created from historical NAV and benchmark data.</p>
+        </div>
+        <div class="table-shell">
+          <table>
+            <tbody id="portfolioMetricsTable">
+              <tr><td class="empty-state" colspan="2">Portfolio metrics will appear after analysis.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Scheme Metrics</h2>
+          <p>Each mutual fund is measured independently for the same tenure and benchmark.</p>
+        </div>
+        <div class="table-shell">
+          <table>
+            <thead>
+              <tr>
+                <th>Scheme</th>
+                <th>CAGR</th>
+                <th>Std Dev</th>
+                <th>Sharpe</th>
+                <th>Alpha</th>
+                <th>Beta</th>
+                <th>Treynor</th>
+                <th>Info Ratio</th>
+                <th>Max Drawdown</th>
+              </tr>
+            </thead>
+            <tbody id="schemeMetricsBody">
+              <tr>
+                <td colspan="9" class="empty-state">Scheme analytics will appear after analysis.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section class="panel assumptions-panel">
+      <div class="panel-head">
+        <h2>Assumptions and Notes</h2>
+      </div>
+      <ul id="assumptionList" class="assumptions-list">
+        <li>The parser is tuned for text-based detailed CAS PDFs where folio, scheme, units, cost, and valuation rows are extractable as text.</li>
+        <li>Risk metrics require benchmark history. If the selected benchmark data cannot be fetched from Yahoo Finance, benchmark-sensitive ratios may be unavailable.</li>
+        <li>Scheme matching uses fuzzy text comparison against the AMFI scheme list and may need manual review for very similar plan names.</li>
+      </ul>
+    </section>
+  </div>
+</body>
+</html>
