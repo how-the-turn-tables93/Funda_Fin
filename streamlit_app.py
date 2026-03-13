@@ -13,11 +13,9 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
-import streamlit.components.v1 as components
 import yfinance as yf
 from pypdf import PdfReader
 import plotly.graph_objects as go
-import plotly.io as pio
 
 
 MF_API_BASE = "https://api.mfapi.in"
@@ -1111,6 +1109,7 @@ def metrics_to_frame(metrics: dict) -> pd.DataFrame:
 def render_growth_chart(chart_df: pd.DataFrame) -> None:
     plot_df = chart_df.copy()
     plot_df["date"] = pd.to_datetime(plot_df["date"])
+    plot_df = plot_df.sort_values("date").drop_duplicates(subset=["date"], keep="last").reset_index(drop=True)
     series_columns = [col for col in plot_df.columns if col != "date"]
     if not series_columns:
         return
@@ -1123,7 +1122,7 @@ def render_growth_chart(chart_df: pd.DataFrame) -> None:
     all_values = []
 
     for series_name in series_columns:
-        series = plot_df[["date", series_name]].dropna()
+        series = plot_df[["date", series_name]].dropna().sort_values("date").drop_duplicates(subset=["date"], keep="last")
         if series.empty:
             continue
         all_values.extend(series[series_name].tolist())
@@ -1178,8 +1177,7 @@ def render_growth_chart(chart_df: pd.DataFrame) -> None:
         hoverlabel=dict(bgcolor="#1f2937", font_color="#ffffff"),
     )
 
-    html = pio.to_html(fig, include_plotlyjs="cdn", full_html=False, config={"displaylogo": False, "responsive": True})
-    components.html(html, height=460)
+    st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False, "responsive": True})
 
 
 def to_value_frame(frame: pd.DataFrame) -> pd.DataFrame:
