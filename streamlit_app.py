@@ -28,6 +28,12 @@ BENCHMARK_OPTIONS = {
     "Nifty BeES ETF": "NIFTYBEES.NS",
     "Nifty 500": "^CRSLDX",
 }
+SCHEME_BENCHMARK_OPTIONS = {
+    "Nifty 50": "^NSEI",
+    "Sensex": "^BSESN",
+    "Nifty Midcap 150": "NIFTYMIDCAP150.NS",
+    "Nifty Smallcap 250": "NIFTYSMLCAP250.NS",
+}
 TENURE_OPTIONS = {
     "1 Year": 252,
     "3 Years": 252 * 3,
@@ -736,11 +742,18 @@ def analyze_portfolio(holdings: pd.DataFrame, benchmark_symbol: str, trading_day
             nav_history = nav_history.tail(trading_days)
         if nav_history.empty:
             continue
-        aligned_fund, aligned_benchmark = align_series(nav_history, benchmark_series)
+        scheme_benchmark_symbol = row.get("scheme_benchmark_symbol") or benchmark_symbol
+        scheme_benchmark_label = row.get("scheme_benchmark_label") or benchmark_symbol
+        scheme_benchmark_series = fetch_benchmark_series(scheme_benchmark_symbol)
+        if trading_days is not None:
+            scheme_benchmark_series = scheme_benchmark_series.tail(trading_days)
+
+        aligned_fund, aligned_benchmark = align_series(nav_history, scheme_benchmark_series)
         metrics = compute_risk_metrics(aligned_fund, aligned_benchmark, risk_free_rate)
         scheme_metrics.append(
             {
                 "Scheme": row["scheme"],
+                "Benchmark": scheme_benchmark_label,
                 "CAGR": format_pct(metrics["cagr"]),
                 "Std Dev": format_pct(metrics["standard_deviation"]),
                 "Sharpe": format_num(metrics["sharpe"]),
@@ -798,6 +811,7 @@ def enrich_holdings(holdings: pd.DataFrame) -> pd.DataFrame:
     source_rows = holdings.to_dict(orient="records")
     matches = []
     codes_to_fetch: set[str] = set()
+    codes_to_fetch_meta: set[str] = set()
 
     for row in source_rows:
         match = match_scheme(row["scheme"], catalog) if not catalog.empty else None
@@ -805,6 +819,8 @@ def enrich_holdings(holdings: pd.DataFrame) -> pd.DataFrame:
         should_fetch_history = match is not None and float(row.get("units", 0.0)) > 0 and float(row.get("current_value", 0.0)) > 0
         if should_fetch_history:
             codes_to_fetch.add(str(match["schemeCode"]))
+        if match is not None:
+            codes_to_fetch_meta.add(str(match["schemeCode"]))
 
     nav_cache: dict[str, pd.DataFrame] = {}
     if codes_to_fetch:
@@ -817,10 +833,23 @@ def enrich_holdings(holdings: pd.DataFrame) -> pd.DataFrame:
                 except Exception:
                     nav_cache[code] = pd.DataFrame()
 
+    meta_cache: dict[str, dict] = {}
+    if codes_to_fetch_meta:
+        with ThreadPoolExecutor(max_workers=min(8, len(codes_to_fetch_meta))) as executor:
+            future_map = {executor.submit(fetch_scheme_meta, code): code for code in codes_to_fetch_meta}
+            for future in as_completed(future_map):
+                code = future_map[future]
+                try:
+                    meta_cache[code] = future.result()
+                except Exception:
+                    meta_cache[code] = {}
+
     enriched_rows = []
     for row, match in zip(source_rows, matches):
         should_fetch_history = match is not None and float(row.get("units", 0.0)) > 0 and float(row.get("current_value", 0.0)) > 0
         nav_history = nav_cache.get(str(match["schemeCode"]), pd.DataFrame()) if should_fetch_history else pd.DataFrame()
+        scheme_meta = meta_cache.get(str(match["schemeCode"]), {}) if match is not None else {}
+        scheme_benchmark_label, scheme_benchmark_symbol = infer_scheme_benchmark(scheme_meta, row["scheme"])
         current_nav = row.get("current_nav", 0.0)
         if not nav_history.empty:
             current_nav = float(nav_history["nav"].iloc[-1])
@@ -830,6 +859,10 @@ def enrich_holdings(holdings: pd.DataFrame) -> pd.DataFrame:
                 **row,
                 "scheme_code": str(match["schemeCode"]) if match is not None else "Unmatched",
                 "matched_scheme_name": match["schemeName"] if match is not None else "Unmatched",
+                "scheme_category": scheme_meta.get("scheme_category", ""),
+                "scheme_type": scheme_meta.get("scheme_type", ""),
+                "scheme_benchmark_label": scheme_benchmark_label,
+                "scheme_benchmark_symbol": scheme_benchmark_symbol,
                 "current_nav": current_nav,
                 "current_value": current_value,
                 "nav_history": nav_history,
@@ -861,6 +894,17 @@ def fetch_nav_history(scheme_code: str) -> pd.DataFrame:
         return pd.DataFrame(columns=["nav"])
     frame = pd.DataFrame(records).dropna().sort_values("date")
     return frame.set_index("date")
+
+
+@st.cache_data(show_spinner=False, ttl=24 * 60 * 60)
+def fetch_scheme_meta(scheme_code: str) -> dict:
+    try:
+        response = requests.get(f"{MF_API_BASE}/mf/{scheme_code}", timeout=HTTP_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("meta", {}) or {}
+    except requests.RequestException:
+        return {}
 
 
 @st.cache_data(show_spinner=False, ttl=12 * 60 * 60)
@@ -910,6 +954,23 @@ def match_scheme(target_scheme: str, catalog: pd.DataFrame) -> pd.Series | None:
             best_score = score
             best_row = row
     return best_row if best_score >= 0.45 else None
+
+
+def infer_scheme_benchmark(scheme_meta: dict, scheme_name: str) -> tuple[str, str]:
+    category = normalize_spaces(str(scheme_meta.get("scheme_category", "")).lower())
+    name = normalize_scheme_name(scheme_name)
+    text = f"{category} {name}"
+
+    if any(token in text for token in ["small cap", "smallcap"]):
+        return "Nifty Smallcap 250", SCHEME_BENCHMARK_OPTIONS["Nifty Smallcap 250"]
+    if any(token in text for token in ["mid cap", "midcap"]):
+        return "Nifty Midcap 150", SCHEME_BENCHMARK_OPTIONS["Nifty Midcap 150"]
+    if any(token in text for token in ["sensex", "bse"]):
+        return "Sensex", SCHEME_BENCHMARK_OPTIONS["Sensex"]
+    if any(token in text for token in ["large cap", "large & mid", "large and mid", "flexi cap", "flexicap", "multi cap", "multicap", "focused", "value", "contra", "elss", "equity"]):
+        return "Nifty 50", SCHEME_BENCHMARK_OPTIONS["Nifty 50"]
+
+    return "Nifty 50", SCHEME_BENCHMARK_OPTIONS["Nifty 50"]
 
 
 def compute_risk_metrics(asset_series: pd.DataFrame, benchmark_series: pd.DataFrame, risk_free_rate: float) -> dict:
