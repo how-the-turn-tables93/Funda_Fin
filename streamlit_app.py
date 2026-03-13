@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import json
 import math
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -129,6 +128,10 @@ def inject_app_styles() -> None:
         [data-testid="stMetricValue"] * {
             color: #111827 !important;
         }
+        [data-testid="stMetricValue"] {
+            font-size: 1.1rem !important;
+            line-height: 1.2 !important;
+        }
         .stButton > button,
         .stDownloadButton > button {
             background: linear-gradient(135deg, #111111, #2f2f2f);
@@ -237,6 +240,15 @@ def inject_app_styles() -> None:
             color: #111827 !important;
             fill: #111827 !important;
         }
+        [data-baseweb="popover"] [role="listbox"],
+        [data-baseweb="popover"] [role="option"],
+        [data-baseweb="menu"],
+        [role="menu"],
+        [role="menuitem"] {
+            background: #111111 !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
         .stCheckbox label,
         .stCheckbox span,
         .stToggle span {
@@ -287,6 +299,14 @@ def inject_app_styles() -> None:
             background: #ffffff;
             color: #111827;
         }
+        .stat-chip.dark .label,
+        .stat-chip.dark .value {
+            color: #ffffff !important;
+        }
+        .stat-chip.light .label,
+        .stat-chip.light .value {
+            color: #111827 !important;
+        }
         .stat-chip .label {
             font-size: 0.82rem;
             font-weight: 600;
@@ -301,6 +321,12 @@ def inject_app_styles() -> None:
             border: 1px solid #d1d5db;
             border-radius: 16px;
             padding: 0.5rem;
+        }
+        .js-plotly-plot .plotly .modebar {
+            background: rgba(17, 17, 17, 0.88) !important;
+        }
+        .js-plotly-plot .plotly .modebar-btn path {
+            fill: #ffffff !important;
         }
         @media (max-width: 900px) {
             .app-hero {
@@ -405,7 +431,7 @@ def main() -> None:
             tenure_label = st.selectbox("Return / Risk Duration", list(TENURE_OPTIONS.keys()), index=2)
         with metric_controls[1]:
             st.markdown(
-                f'<div class="stat-chip dark"><div class="label">Benchmark Used</div><div class="value">{benchmark_label}</div></div>',
+                f'<div class="stat-chip light"><div class="label">Benchmark Used</div><div class="value">{benchmark_label}</div></div>',
                 unsafe_allow_html=True,
             )
         with metric_controls[2]:
@@ -422,9 +448,9 @@ def main() -> None:
 
         summary_cols = st.columns(5)
         summary_cols[0].metric("Folios / Rows", f"{len(working_holdings)}")
-        summary_cols[1].metric("Total Value", format_inr(analytics["total_value"]))
-        summary_cols[2].metric("Total Cost", format_inr(analytics["total_cost"]))
-        summary_cols[3].metric("Unrealized Gain", format_inr(analytics["total_gain"]))
+        summary_cols[1].metric("Total Value", format_inr_whole(analytics["total_value"]))
+        summary_cols[2].metric("Total Cost", format_inr_whole(analytics["total_cost"]))
+        summary_cols[3].metric("Unrealized Gain", format_inr_whole(analytics["total_gain"]))
         summary_cols[4].metric("Portfolio CAGR", format_pct(analytics["portfolio_metrics"]["cagr"]))
 
         chart_df = analytics["growth_chart"].copy()
@@ -1033,10 +1059,9 @@ def render_growth_chart(chart_df: pd.DataFrame) -> None:
     }
 
     fig = go.Figure()
-    pulse_traces = []
     all_values = []
 
-    for idx, series_name in enumerate(series_columns):
+    for series_name in series_columns:
         series = plot_df[["date", series_name]].dropna()
         if series.empty:
             continue
@@ -1053,56 +1078,18 @@ def render_growth_chart(chart_df: pd.DataFrame) -> None:
             )
         )
 
-        pulse_series = [
-            {
-                "x": ts.isoformat(),
-                "y": float(val),
-            }
-            for ts, val in zip(series["date"], series[series_name])
-        ]
-        pulse_traces.append(
-            {
-                "series": pulse_series,
-                "glowColor": hex_to_rgba(line_color, 0.22),
-                "solidColor": line_color,
-                "name": f"{series_name} pulse",
-            }
-        )
-        first_point = pulse_series[0]
-        fig.add_trace(
-            go.Scatter(
-                x=[first_point["x"]],
-                y=[first_point["y"]],
-                mode="markers",
-                marker={"size": 24, "color": hex_to_rgba(line_color, 0.22), "line": {"width": 0}},
-                name=f"{series_name} glow",
-                hoverinfo="skip",
-                showlegend=False,
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=[first_point["x"]],
-                y=[first_point["y"]],
-                mode="markers",
-                marker={"size": 9, "color": line_color, "line": {"width": 0}},
-                name=f"{series_name} pulse core",
-                hoverinfo="skip",
-                showlegend=False,
-            )
-        )
-
     if not all_values:
         return
 
     y_min = min(all_values)
     y_max = max(all_values)
-    y_padding = max((y_max - y_min) * 0.08, y_max * 0.02 if y_max else 1)
+    spread = max(y_max - y_min, 1)
+    y_padding = spread * 0.08
     fig.update_layout(
-        height=390,
+        height=420,
         paper_bgcolor="#0b0b0c",
         plot_bgcolor="#0b0b0c",
-        margin=dict(l=20, r=20, t=20, b=20),
+        margin=dict(l=90, r=40, t=40, b=80),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(color="#ffffff")),
         xaxis=dict(
             title="Month",
@@ -1114,6 +1101,7 @@ def render_growth_chart(chart_df: pd.DataFrame) -> None:
             showline=True,
             linecolor="#ffffff",
             zeroline=False,
+            automargin=True,
         ),
         yaxis=dict(
             title="Value (INR)",
@@ -1123,51 +1111,14 @@ def render_growth_chart(chart_df: pd.DataFrame) -> None:
             showline=True,
             linecolor="#ffffff",
             zeroline=False,
+            automargin=True,
             tickformat=",",
         ),
         hoverlabel=dict(bgcolor="#1f2937", font_color="#ffffff"),
     )
 
-    html = pio.to_html(fig, include_plotlyjs="cdn", full_html=False, div_id="growth-chart")
-    pulse_json = json.dumps(pulse_traces)
-    html += f"""
-    <script>
-    (function() {{
-      const pulses = {pulse_json};
-      const chart = document.getElementById("growth-chart");
-      if (!chart || !window.Plotly || !pulses.length) return;
-      const duration = 3000;
-      let start = performance.now();
-
-      function pointAt(series, progress) {{
-        const index = Math.min(series.length - 1, Math.floor(progress * (series.length - 1)));
-        return series[index];
-      }}
-
-      function animate(now) {{
-        const progress = ((now - start) % duration) / duration;
-        const update = {{ x: [], y: [] }};
-        pulses.forEach((pulse) => {{
-          const point = pointAt(pulse.series, progress);
-          update.x.push([point.x]);
-          update.y.push([point.y]);
-          update.x.push([point.x]);
-          update.y.push([point.y]);
-        }});
-        const traceIndexes = [];
-        for (let i = 0; i < pulses.length; i++) {{
-          traceIndexes.push(1 + i * 3);
-          traceIndexes.push(2 + i * 3);
-        }}
-        window.Plotly.restyle(chart, update, traceIndexes);
-        requestAnimationFrame(animate);
-      }}
-
-      requestAnimationFrame(animate);
-    }})();
-    </script>
-    """
-    components.html(html, height=430)
+    html = pio.to_html(fig, include_plotlyjs="cdn", full_html=False, config={"displaylogo": False, "responsive": True})
+    components.html(html, height=460)
 
 
 def to_value_frame(frame: pd.DataFrame) -> pd.DataFrame:
@@ -1311,14 +1262,23 @@ def format_inr(value: float) -> str:
     return f"Rs {value:,.2f}"
 
 
-def hex_to_rgba(hex_color: str, alpha: float) -> str:
-    hex_color = hex_color.lstrip("#")
-    if len(hex_color) != 6:
-        return f"rgba(255,255,255,{alpha})"
-    red = int(hex_color[0:2], 16)
-    green = int(hex_color[2:4], 16)
-    blue = int(hex_color[4:6], 16)
-    return f"rgba({red},{green},{blue},{alpha})"
+def format_inr_whole(value: float) -> str:
+    if pd.isna(value):
+        return "-"
+    amount = int(round(float(value)))
+    sign = "-" if amount < 0 else ""
+    digits = str(abs(amount))
+    if len(digits) <= 3:
+        return f"Rs {sign}{digits}"
+    last_three = digits[-3:]
+    remaining = digits[:-3]
+    groups = []
+    while len(remaining) > 2:
+        groups.insert(0, remaining[-2:])
+        remaining = remaining[:-2]
+    if remaining:
+        groups.insert(0, remaining)
+    return f"Rs {sign}{','.join(groups + [last_three])}"
 
 
 if __name__ == "__main__":
