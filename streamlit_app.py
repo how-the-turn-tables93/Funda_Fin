@@ -31,8 +31,8 @@ BENCHMARK_OPTIONS = {
 SCHEME_BENCHMARK_OPTIONS = {
     "Nifty 50": "^NSEI",
     "Sensex": "^BSESN",
-    "Nifty Midcap 150": "NIFTYMIDCAP150.NS",
-    "Nifty Smallcap 250": "NIFTYSMLCAP250.NS",
+    "Nifty Midcap 150": "MID150BEES.NS",
+    "Nifty Smallcap 250": "HDFCSML250.NS",
 }
 TENURE_OPTIONS = {
     "1 Year": 252,
