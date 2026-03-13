@@ -1020,8 +1020,8 @@ def combine_weighted_series(series_list: Iterable[pd.DataFrame]) -> pd.DataFrame
     series_list = [series for series in series_list if not series.empty]
     if not series_list:
         return pd.DataFrame(columns=["value"])
-    combined = pd.concat([series.rename(columns={"value": f"series_{i}"}) for i, series in enumerate(series_list)], axis=1)
-    combined = combined.ffill().dropna(how="all")
+    combined = pd.concat([series.rename(columns={"value": f"series_{i}"}) for i, series in enumerate(series_list)], axis=1, join="inner")
+    combined = combined.dropna(how="any")
     combined["value"] = combined.sum(axis=1)
     return combined[["value"]]
 
